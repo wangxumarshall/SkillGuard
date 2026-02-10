@@ -12,6 +12,32 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
   const [isScanning, setIsScanning] = useState(false);
   const [lastResult, setLastResult] = useState<ScanResult | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const file = e.dataTransfer.files[0];
+      try {
+        const text = await file.text();
+        setCode(text);
+      } catch (err) {
+        console.error("Failed to read file:", err);
+      }
+    }
+  };
 
   const handleScan = async () => {
     if (!code.trim()) return;
@@ -94,10 +120,16 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
                 </div>
             </div>
             
-            <div className="h-24 border-2 border-dashed border-gray-700 rounded-xl flex items-center justify-center text-gray-500 hover:text-gray-300 hover:border-gray-500 transition-colors cursor-pointer bg-gray-800/30">
+            <div
+                className={`h-24 border-2 border-dashed rounded-xl flex items-center justify-center transition-colors cursor-pointer
+                    ${isDragging ? 'border-neon-green bg-green-900/20 text-white' : 'border-gray-700 text-gray-500 hover:text-gray-300 hover:border-gray-500 bg-gray-800/30'}`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+            >
                 <div className="flex flex-col items-center gap-2">
-                    <Upload className="w-6 h-6" />
-                    <span className="text-sm">Drag & Drop Skill Manifest Files</span>
+                    <Upload className={`w-6 h-6 ${isDragging ? 'animate-bounce' : ''}`} />
+                    <span className="text-sm">{isDragging ? 'Release to Load Skill' : 'Drag & Drop Skill Manifest Files'}</span>
                 </div>
             </div>
         </div>

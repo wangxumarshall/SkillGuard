@@ -2,12 +2,23 @@ import { GoogleGenAI, Modality, Type } from "@google/genai";
 import { ScanResult } from '../types';
 import { performSignatureScan } from './signatureDatabase';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "MISSING_API_KEY" });
 
 // Models
 const MODEL_TEXT_ADVANCED = 'gemini-3-pro-preview';
 const MODEL_IMAGE_ADVANCED = 'gemini-3-pro-preview'; // User requested image analysis with this model
 const MODEL_TTS = 'gemini-2.5-flash-preview-tts';
+
+// Helper to clean JSON string from markdown code blocks
+const cleanJsonString = (text: string): string => {
+  if (!text) return '{}';
+  // Remove markdown code blocks if present
+  let cleaned = text.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '');
+  }
+  return cleaned;
+};
 
 /**
  * Analyzes code or text description of a "Skill" for viruses/vulnerabilities.
@@ -69,7 +80,16 @@ export const scanSkillCode = async (code: string, filename: string): Promise<Sca
       }
     });
 
-    const result = JSON.parse(response.text || '{}');
+    const responseText = response.text || '{}';
+    const cleanedText = cleanJsonString(responseText);
+
+    let result;
+    try {
+        result = JSON.parse(cleanedText);
+    } catch (e) {
+        console.error("Failed to parse JSON response:", responseText, e);
+        throw new Error("Invalid JSON response from AI");
+    }
 
     // Force status to infected/suspicious if critical signatures exist, unless AI strongly argues otherwise
     // For this implementation, we trust the AI's synthesis of the signature data + context.
@@ -113,7 +133,7 @@ export const chatWithSecurityBot = async (history: { role: string, parts: { text
     });
 
     const result = await chat.sendMessage({ message: newMessage });
-    return result.text;
+    return result.text || "No response received.";
   } catch (error) {
     console.error("Chat failed:", error);
     return "Encrypted channel error. Unable to process request.";
@@ -123,7 +143,7 @@ export const chatWithSecurityBot = async (history: { role: string, parts: { text
 /**
  * Analyzes an image for security threats.
  */
-export const analyzeImageThreat = async (base64Image: string, promptText: string = "Analyze this screenshot for potential security risks, hidden code, or malicious UI patterns.") => {
+export const analyzeImageThreat = async (base64Image: string, mimeType: string = 'image/jpeg', promptText: string = "Analyze this screenshot for potential security risks, hidden code, or malicious UI patterns.") => {
   try {
     const response = await ai.models.generateContent({
       model: MODEL_IMAGE_ADVANCED,
@@ -131,7 +151,7 @@ export const analyzeImageThreat = async (base64Image: string, promptText: string
         parts: [
           {
             inlineData: {
-              mimeType: 'image/jpeg',
+              mimeType: mimeType,
               data: base64Image
             }
           },
@@ -139,7 +159,7 @@ export const analyzeImageThreat = async (base64Image: string, promptText: string
         ]
       }
     });
-    return response.text;
+    return response.text || "No analysis generated.";
   } catch (error) {
     console.error("Image analysis failed:", error);
     return "Visual cortex offline. Analysis failed.";

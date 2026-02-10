@@ -25,8 +25,10 @@ const ImageScanner: React.FC = () => {
     
     setIsAnalyzing(true);
     // Extract base64 part only
-    const base64Data = image.split(',')[1];
-    const result = await analyzeImageThreat(base64Data);
+    const [header, base64Data] = image.split(',');
+    const mimeType = header.split(':')[1].split(';')[0];
+
+    const result = await analyzeImageThreat(base64Data, mimeType);
     setAnalysis(result);
     setIsAnalyzing(false);
   };
