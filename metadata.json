@@ -1,0 +1,8 @@
+{
+  "name": "SkillGuard Sentinel",
+  "description": "A next-generation AI security framework designed to detect and neutralize 'Skill Viruses' in autonomous agents. Mimics a Linux security suite with deep code scanning, visual threat analysis, and voice-enabled reporting.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
