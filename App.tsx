@@ -1,3 +1,4 @@
+// App.tsx
 import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
@@ -5,14 +6,14 @@ import Scanner from './components/Scanner';
 import ImageScanner from './components/ImageScanner';
 import ChatAssistant from './components/ChatAssistant';
 import Logs from './components/Logs';
-import { AppView, ScanResult } from './types';
+import { AppView, ScanReport } from './types';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
-  const [scanResults, setScanResults] = useState<ScanResult[]>([]);
+  const [scanHistory, setScanHistory] = useState<ScanReport[]>([]);
 
-  const handleScanComplete = (result: ScanResult) => {
-    setScanResults(prev => [result, ...prev]);
+  const handleScanComplete = (result: ScanReport) => {
+    setScanHistory(prev => [result, ...prev]);
   };
 
   // Helper to manage visibility while keeping components mounted (preserving state)
@@ -28,7 +29,7 @@ const App: React.FC = () => {
         <div className="relative z-10 h-full">
             {/* We render all views and toggle visibility to preserve state (inputs, results, chat history) */}
             <div style={getDisplayStyle(AppView.DASHBOARD)}>
-              <Dashboard scanResults={scanResults} />
+              <Dashboard scanHistory={scanHistory} />
             </div>
             
             <div style={getDisplayStyle(AppView.SCANNER)}>

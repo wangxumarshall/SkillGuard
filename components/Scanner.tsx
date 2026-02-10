@@ -1,16 +1,19 @@
+// components/Scanner.tsx
 import React, { useState } from 'react';
-import { Upload, FileCode, Play, Loader2, Volume2, Database, AlertOctagon } from 'lucide-react';
-import { scanSkillCode, generateSpeechAlert } from '../services/geminiService';
-import { ScanResult } from '../types';
+import { Upload, FileCode, Play, Loader2, Volume2, ShieldAlert, CheckCircle, AlertTriangle, Hammer } from 'lucide-react';
+import { scanContent } from '../services/core/detection';
+import { remediateContent } from '../services/core/remediation/sanitizer';
+import { ScanReport } from '../types';
+import { generateSpeechAlert } from '../services/geminiService'; // Reuse TTS
 
 interface ScannerProps {
-  onScanComplete: (result: ScanResult) => void;
+  onScanComplete: (result: ScanReport) => void;
 }
 
 const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
-  const [code, setCode] = useState('');
+  const [content, setContent] = useState('');
   const [isScanning, setIsScanning] = useState(false);
-  const [lastResult, setLastResult] = useState<ScanResult | null>(null);
+  const [lastResult, setLastResult] = useState<ScanReport | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -32,7 +35,7 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
       const file = e.dataTransfer.files[0];
       try {
         const text = await file.text();
-        setCode(text);
+        setContent(text);
       } catch (err) {
         console.error("Failed to read file:", err);
       }
@@ -40,23 +43,31 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
   };
 
   const handleScan = async () => {
-    if (!code.trim()) return;
+    if (!content.trim()) return;
 
     setIsScanning(true);
     setLastResult(null);
 
-    const result = await scanSkillCode(code, "manual_input_script.py");
+    const result = await scanContent(content, "Manual Input");
     
     setLastResult(result);
     onScanComplete(result);
     setIsScanning(false);
   };
 
+  const handleRemediate = () => {
+    if (!lastResult || !content) return;
+    const cleanContent = remediateContent(content, lastResult.findings);
+    setContent(cleanContent);
+    // Optionally trigger a re-scan or clear the result to indicate "Cleaned" state
+    setLastResult(prev => prev ? { ...prev, overallStatus: 'CLEAN', maxSeverity: 'SAFE', findings: [], aiAnalysisSummary: 'Content Sanitized.' } : null);
+  };
+
   const playReport = async () => {
     if (!lastResult || isPlaying) return;
     setIsPlaying(true);
     
-    const text = `Scan completed for ${lastResult.filename}. Status: ${lastResult.status}. Threat Level: ${lastResult.threatLevel}. ${lastResult.details}`;
+    const text = `Scan completed. Status: ${lastResult.overallStatus}. Severity: ${lastResult.maxSeverity}. ${lastResult.aiAnalysisSummary}`;
     
     const audioBuffer = await generateSpeechAlert(text);
     if (audioBuffer) {
@@ -75,18 +86,29 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
     <div className="p-8 h-full flex flex-col">
       <header className="mb-6 flex justify-between items-end">
         <div>
-          <h2 className="text-3xl font-bold text-white mb-2">Skill Scanner</h2>
-          <p className="text-gray-400">Paste skill definition (JSON/Python/JS) to detect autonomous viruses.</p>
+          <h2 className="text-3xl font-bold text-white mb-2">Threat Scanner</h2>
+          <p className="text-gray-400">Scan Prompts, Skills, or Configs for LLM Viruses.</p>
         </div>
         {lastResult && (
-           <button 
-             onClick={playReport}
-             disabled={isPlaying}
-             className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors disabled:opacity-50"
-           >
-             {isPlaying ? <Loader2 className="animate-spin w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-             {isPlaying ? 'Speaking...' : 'Read Report'}
-           </button>
+           <div className="flex gap-2">
+             {lastResult.overallStatus !== 'CLEAN' && (
+               <button
+                 onClick={handleRemediate}
+                 className="flex items-center gap-2 px-4 py-2 bg-neon-red hover:bg-red-600 text-black font-bold rounded transition-colors"
+               >
+                 <Hammer className="w-4 h-4" />
+                 Fix Threats
+               </button>
+             )}
+             <button
+               onClick={playReport}
+               disabled={isPlaying}
+               className="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded transition-colors disabled:opacity-50"
+             >
+               {isPlaying ? <Loader2 className="animate-spin w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+               {isPlaying ? 'Speaking...' : 'Read Report'}
+             </button>
+           </div>
         )}
       </header>
 
@@ -95,25 +117,25 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
             <div className="flex-1 bg-gray-900 border border-gray-700 rounded-xl overflow-hidden relative">
                 <textarea 
                     className="w-full h-full bg-transparent p-4 font-mono text-sm text-gray-300 focus:outline-none resize-none"
-                    placeholder="// Paste skill code here..."
-                    value={code}
-                    onChange={(e) => setCode(e.target.value)}
+                    placeholder="// Paste Prompt or Skill Code here..."
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
                 />
                 <div className="absolute bottom-4 right-4">
                     <button 
                         onClick={handleScan}
-                        disabled={isScanning || !code}
+                        disabled={isScanning || !content}
                         className="flex items-center gap-2 bg-neon-green text-black font-bold px-6 py-3 rounded-lg hover:bg-green-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(0,255,157,0.3)]"
                     >
                         {isScanning ? (
                             <>
                                 <Loader2 className="animate-spin w-5 h-5" />
-                                SCANNING...
+                                ANALYZING...
                             </>
                         ) : (
                             <>
                                 <Play className="w-5 h-5 fill-current" />
-                                EXECUTE SCAN
+                                SCAN
                             </>
                         )}
                     </button>
@@ -129,7 +151,7 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
             >
                 <div className="flex flex-col items-center gap-2">
                     <Upload className={`w-6 h-6 ${isDragging ? 'animate-bounce' : ''}`} />
-                    <span className="text-sm">{isDragging ? 'Release to Load Skill' : 'Drag & Drop Skill Manifest Files'}</span>
+                    <span className="text-sm">{isDragging ? 'Release to Load Content' : 'Drag & Drop Skill Files (.py, .md, .json)'}</span>
                 </div>
             </div>
         </div>
@@ -144,74 +166,63 @@ const Scanner: React.FC<ScannerProps> = ({ onScanComplete }) => {
                 <div className="space-y-6 animate-fade-in">
                     <div className="flex items-center justify-between border-b border-gray-700 pb-4">
                         <div>
-                            <h3 className="text-lg font-bold text-white">Analysis Report</h3>
+                            <h3 className="text-lg font-bold text-white">Scan Report</h3>
                             <div className="text-xs text-gray-400 font-mono">{lastResult.id}</div>
                         </div>
-                        <div className={`px-4 py-2 rounded font-bold ${
-                            lastResult.status === 'Clean' ? 'bg-green-500/20 text-neon-green' : 
-                            lastResult.status === 'Infected' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-400'
+                        <div className={`px-4 py-2 rounded font-bold flex items-center gap-2 ${
+                            lastResult.overallStatus === 'CLEAN' ? 'bg-green-500/20 text-neon-green' :
+                            lastResult.overallStatus === 'INFECTED' ? 'bg-red-500/20 text-red-500' : 'bg-yellow-500/20 text-yellow-400'
                         }`}>
-                            {lastResult.status.toUpperCase()}
+                            {lastResult.overallStatus === 'CLEAN' ? <CheckCircle className="w-5 h-5" /> : <ShieldAlert className="w-5 h-5" />}
+                            {lastResult.overallStatus}
                         </div>
                     </div>
 
                     <div>
-                        <div className="text-sm text-gray-400 mb-1 font-mono">THREAT LEVEL</div>
-                        <div className="h-4 w-full bg-gray-700 rounded-full overflow-hidden">
-                            <div 
-                                className={`h-full transition-all duration-1000 ${
-                                    lastResult.threatLevel > 75 ? 'bg-red-500' : 
-                                    lastResult.threatLevel > 25 ? 'bg-yellow-500' : 'bg-neon-green'
-                                }`}
-                                style={{ width: `${lastResult.threatLevel}%` }}
-                            />
-                        </div>
-                        <div className="flex justify-end mt-1 text-xs font-mono text-gray-300">
-                            {lastResult.threatLevel}/100
+                        <div className="text-sm text-gray-400 mb-1 font-mono">SEVERITY ASSESSMENT</div>
+                        <div className={`text-xl font-bold ${
+                            lastResult.maxSeverity === 'CRITICAL' ? 'text-red-500' :
+                            lastResult.maxSeverity === 'HIGH' ? 'text-orange-500' :
+                            lastResult.maxSeverity === 'MEDIUM' ? 'text-yellow-400' : 'text-green-400'
+                        }`}>
+                            {lastResult.maxSeverity}
                         </div>
                     </div>
 
-                    {/* Signature Matches Section */}
-                    {lastResult.signatureMatches && lastResult.signatureMatches.length > 0 && (
-                      <div className="bg-gray-900/80 border border-gray-700 rounded p-4">
-                        <div className="flex items-center gap-2 text-neon-red mb-3">
-                          <Database className="w-4 h-4" />
-                          <h4 className="text-sm font-bold font-mono">DATABASE SIGNATURE HITS</h4>
+                    {/* Findings Section */}
+                    {lastResult.findings && lastResult.findings.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-neon-red mb-1">
+                          <AlertTriangle className="w-4 h-4" />
+                          <h4 className="text-sm font-bold font-mono">DETECTED THREATS</h4>
                         </div>
-                        <div className="space-y-2">
-                          {lastResult.signatureMatches.map((sig) => (
-                            <div key={sig.id} className="flex items-center justify-between text-xs bg-red-950/30 p-2 rounded border border-red-900/20">
-                              <span className="text-red-300 font-mono">{sig.id} :: {sig.name}</span>
-                              <span className={`px-1.5 py-0.5 rounded ${
-                                sig.severity === 'CRITICAL' ? 'bg-red-500 text-black' : 
-                                sig.severity === 'WARNING' ? 'bg-yellow-500 text-black' : 'bg-blue-500 text-black'
-                              } font-bold`}>{sig.severity}</span>
+                        {lastResult.findings.map((finding, idx) => (
+                            <div key={idx} className="bg-red-950/30 p-3 rounded border border-red-900/20">
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="text-red-300 font-bold text-sm">{finding.type}</span>
+                                    <span className="text-xs bg-red-500/20 text-red-300 px-2 py-0.5 rounded">{finding.severity}</span>
+                                </div>
+                                <div className="text-gray-300 text-sm mb-2">{finding.description}</div>
+                                {finding.snippet && (
+                                    <div className="bg-black/40 p-2 rounded font-mono text-xs text-red-200 mb-2 truncate">
+                                        Matched: "{finding.snippet}"
+                                    </div>
+                                )}
+                                <div className="text-green-400 text-xs flex items-center gap-1">
+                                    <ShieldAlert className="w-3 h-3" />
+                                    Remediation: {finding.remediation}
+                                </div>
                             </div>
-                          ))}
-                        </div>
+                        ))}
                       </div>
                     )}
 
                     <div>
                         <div className="text-sm text-gray-400 mb-2 font-mono">AI SUMMARY</div>
-                        <p className="text-gray-200 leading-relaxed bg-gray-900/50 p-4 rounded border border-gray-700">
-                            {lastResult.details}
+                        <p className="text-gray-200 leading-relaxed bg-gray-900/50 p-4 rounded border border-gray-700 text-sm">
+                            {lastResult.aiAnalysisSummary}
                         </p>
                     </div>
-
-                    {lastResult.vulnerabilities.length > 0 && (
-                        <div>
-                            <div className="text-sm text-gray-400 mb-2 font-mono">DETECTED VULNERABILITIES</div>
-                            <ul className="space-y-2">
-                                {lastResult.vulnerabilities.map((vuln, idx) => (
-                                    <li key={idx} className="flex items-center gap-2 text-red-400 text-sm bg-red-900/10 p-2 rounded border border-red-900/30">
-                                        <div className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-                                        {vuln}
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
-                    )}
                 </div>
             )}
         </div>
